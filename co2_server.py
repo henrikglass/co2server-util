@@ -1,4 +1,5 @@
 import sys, getopt
+import inotify.adapters
 import socket
 import time
 import _thread
@@ -14,15 +15,33 @@ def handle_client(conn):
         conn.send(co2_table.encode())
         conn.close()
 
+# Updates co2_table from file.
+def load_co2_table():
+    global co2_table 
+    with co2_table_lock:
+        time.sleep(10) # Probably not necessary. But why not. We have time.
+        file = open("co2_table.txt", "r")
+        co2_table = file.read()
+        file.close()
+
 # periodically update co2_table contents
 def perpetually_load_co2_table():
-    global co2_table
-    while True:
-        with co2_table_lock:
-            file = open("co2_table.txt", "r")
-            co2_table = file.read()
-            file.close()
-        time.sleep(3600) # sleep one hour
+    
+    # update table on start
+    load_co2_table()
+    print("read file!")
+    
+    i = inotify.adapters.Inotify()
+    i.add_watch('co2_table.txt')
+
+    # listen for inotify events 
+    for event in i.event_gen(yield_nones=False):
+        (a, type_names, path, filename) = event
+
+        # If file was written to update co2_table
+        if(type_names[0] == 'IN_CLOSE_WRITE'):
+            print("read file again!")
+            load_co2_table()
 
 # parse args
 def parse_args(argv):
